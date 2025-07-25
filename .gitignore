@@ -1,0 +1,4 @@
+# 忽略所有 .log 文件
+*.log
+/client/logs/*.log
+/server/logs/*.log

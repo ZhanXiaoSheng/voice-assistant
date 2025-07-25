@@ -17,7 +17,7 @@ vad:
 
 wakeup:
   word: "小迪"
-  keywords: ["小迪", "小弟", "小地", "小帝"]
+  keywords: ["小迪", "小弟", "小地", "小帝","你好"]
   max_silence_ms: 800
 
 dialogue:

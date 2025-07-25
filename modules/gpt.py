@@ -16,6 +16,8 @@ class GPTProcessor:
         self.conversations = {}  # 存储每个用户的对话历史
         # 系统提示
         self.system_prompt = system_prompt
+        # 预设的欢迎语
+        self.welcome_message = "你好！我是小迪，你的专业智能语音助手。有什么我可以帮助你的吗？"
 
     def initialize_conversation(self, user_id: str):
         """初始化对话，发送系统提示"""
@@ -23,6 +25,24 @@ class GPTProcessor:
             {"role": "system", "content": self.system_prompt}
         ]
         logger.info(f"已为用户 {user_id} 初始化对话")
+
+    def get_welcome_message(self, user_id: str) -> str:
+        """
+        获取欢迎语并初始化对话
+        :param user_id: 用户唯一标识
+        :return: 欢迎语
+        """
+        # 初始化对话
+        if user_id not in self.conversations:
+            self.initialize_conversation(user_id)
+        
+        # conversation = self.conversations[user_id]
+        
+        # # 添加欢迎语到对话历史
+        # conversation.append({"role": "assistant", "content": self.system_prompt})
+        
+        logger.info(f"为用户 {user_id} 提供欢迎语: {self.welcome_message}")
+        return self.welcome_message
     
     def chat(self, user_id: str, message: str) -> str:
         """

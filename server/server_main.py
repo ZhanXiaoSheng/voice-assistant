@@ -51,8 +51,14 @@ user_sessions = defaultdict(dict)
 async def handle_audio_message(websocket, uid, message):
     """处理音频消息"""
     try:
-        user_sessions[uid].setdefault('audio_buffer', []).append(message)
-        await websocket.send(json.dumps({"status": "receiving_audio"}))
+        # 确保audio_buffer存在
+        if 'audio_buffer' not in user_sessions[uid]:
+            user_sessions[uid]['audio_buffer'] = []
+        
+        user_sessions[uid]['audio_buffer'].append(message)
+        # 不再发送状态更新，避免干扰
+        # await websocket.send(json.dumps({"status": "receiving_audio"}))
+        logger.debug(f"接收音频数据，当前缓冲区大小: {len(user_sessions[uid]['audio_buffer'])}")
     except Exception as e:
         logger.error(f"处理音频消息出错: {e}")
         raise
@@ -64,6 +70,15 @@ async def handle_text_message(websocket, uid, message):
         data = json.loads(message)
         
         if data.get("state") == "end":
+            # 检查是否有音频数据
+            audio_buffer = user_sessions[uid].get('audio_buffer', [])
+            if not audio_buffer:
+                logger.warning(f"用户 {uid} 没有音频数据")
+                await websocket.send(json.dumps({"error": "没有检测到语音数据"}))
+                return
+                
+            logger.info(f"处理音频数据，共 {len(audio_buffer)} 帧")
+
             # 保存为 wav 文件
             wav_path = os.path.join(TEMP_DIR, f"{uid}.wav")
             with wave.open(wav_path, 'wb') as wf:
@@ -75,6 +90,12 @@ async def handle_text_message(websocket, uid, message):
             # 处理流程
             await websocket.send(json.dumps({"status": "processing_asr"}))
             asr_text = transcribe_audio(wav_path, config["asr"]["remote_url"])
+
+            # 检查ASR结果
+            if not asr_text.strip():
+                logger.warning(f"ASR识别结果为空: '{asr_text}'")
+                await websocket.send(json.dumps({"error": "未识别到有效语音内容"}))
+                return
             
             await websocket.send(json.dumps({"status": "processing_gpt"}))
             gpt_reply = gpt_processor.chat(uid, asr_text)
@@ -84,14 +105,17 @@ async def handle_text_message(websocket, uid, message):
             audio_data = await synthesize_speech(gpt_reply, config["tts"]["voice"], tts_path)
             
             await websocket.send(audio_data)  
-            await websocket.close()  # 发送完毕后关闭连接
-            
+
+            # 清理音频缓冲区，但保持会话
             # 清理临时文件
             for path in [wav_path, tts_path]:
                 if os.path.exists(path):
                     os.remove(path)
             if 'audio_buffer' in user_sessions[uid]:
                 del user_sessions[uid]['audio_buffer']
+
+            #await websocket.close()  # 发送完毕后关闭连接
+            
                 
     except json.JSONDecodeError:
         await websocket.send(json.dumps({"error": "Invalid JSON format"}))
@@ -101,11 +125,11 @@ async def handle_text_message(websocket, uid, message):
             "type": "error",
             "message": str(e)
         }))
-        try:
-            await websocket.close()
-        except:
-            pass
-        raise
+        # try:
+        #     await websocket.close()
+        # except:
+        #     pass
+        # raise
 
 async def ws_handler(websocket, path):
     """WebSocket连接处理器"""
@@ -114,11 +138,28 @@ async def ws_handler(websocket, path):
     logger.info(f"新连接来自: {websocket.remote_address}, UID: {uid}")
     
     try:
-        # 发送欢迎消息
+        # 发送连接确认消息
         await websocket.send(json.dumps({
             "status": "connected",
-            "message": "语音助手已就绪，请开始说话"
+            "message": "语音助手已就绪"
         }))
+        
+        # 初始化GPT对话（设置系统提示）
+        gpt_processor.initialize_conversation(uid)
+        
+        # 获取欢迎语并转换为语音发送
+        welcome_message = gpt_processor.get_welcome_message(uid)
+        logger.info(f"欢迎语: {welcome_message}")
+        
+        # 转换欢迎语为语音并发送
+        tts_path = os.path.join(TEMP_DIR, f"{uid}_welcome.mp3")
+        welcome_audio = await synthesize_speech(welcome_message, config["tts"]["voice"], tts_path)
+        await websocket.send(welcome_audio)
+        logger.info("已发送欢迎语音")
+        
+        # 清理欢迎语音文件
+        if os.path.exists(tts_path):
+            os.remove(tts_path)
         
         # 主消息循环
         async for message in websocket:
@@ -136,28 +177,19 @@ async def ws_handler(websocket, path):
     except Exception as e:
         logger.error(f"连接处理出错: {e}")
     finally:
-        # 注意：只有在连接真正关闭时才清理会话
-        # 移除了自动清理会话的代码，让GPT会话保持
-        # 清理会话
-        # gpt_processor.clear_conversation(uid)  # 清除GPT对话历史
-        # if uid in user_sessions:
-        #     # 清理临时文件
-        #     wav_path = os.path.join(TEMP_DIR, f"{uid}.wav")
-        #     tts_path = os.path.join(TEMP_DIR, f"{uid}_reply.mp3")
-        #     for path in [wav_path, tts_path]:
-        #         if os.path.exists(path):
-        #             os.remove(path)
-        #     del user_sessions[uid]
-        # logger.info(f"清理完成: {uid}")
+        # 清理临时文件
         wav_path = os.path.join(TEMP_DIR, f"{uid}.wav")
         tts_path = os.path.join(TEMP_DIR, f"{uid}_reply.mp3")
-        for path in [wav_path, tts_path]:
+        welcome_tts_path = os.path.join(TEMP_DIR, f"{uid}_welcome.mp3")
+        for path in [wav_path, tts_path,welcome_tts_path]:
             if os.path.exists(path):
                 try:
                     os.remove(path)
                 except:
                     pass
-        logger.info(f"清理临时文件完成: {uid}")
+        # 清理GPT会话
+        gpt_processor.clear_conversation(uid)
+        logger.info(f"清理完成: {uid}")
 
 async def main():
     """主服务函数"""
