@@ -1,0 +1,23 @@
+# config/server.yaml
+
+server:
+  host: "0.0.0.0"
+  port: 10197
+
+asr:
+  remote_url: "http://192.168.3.28:8002/wav-to-text"
+
+gpt:
+  api_key: "sk-eQ11fTqJHnF8KwCU32bsw4RqMFT2sm593sUbOkKIxeFpJHQG"
+  base_url: "https://api.chatanywhere.tech/v1"
+  model: "gpt-3.5-turbo"
+  max_history: 20
+  trim_history_to: 4
+  system_prompt: "你叫小迪，是一个专业的智能语音助手"
+
+tts:
+  voice: "zh-CN-XiaoxiaoNeural"
+
+temp_dir: "temp_audio"
+
+log_level: "INFO"

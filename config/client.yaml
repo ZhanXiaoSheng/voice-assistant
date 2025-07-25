@@ -1,0 +1,31 @@
+# config/client.yaml
+
+server:
+  url: "ws://localhost:10197"
+
+asr:
+  remote_url: "http://192.168.3.28:8002/wav-to-text"
+
+audio:
+  format: "paInt16"
+  channels: 1
+  rate: 16000
+  chunk_ms: 30
+
+vad:
+  aggressiveness: 2
+
+wakeup:
+  word: "小迪"
+  keywords: ["小迪", "小弟", "小地", "小帝"]
+  max_silence_ms: 800
+
+dialogue:
+  max_silence_ms: 1000
+  timeout: 30
+
+temp_dirs:
+  wakeup: "wakeup_audio"
+  temp: "temp_audio"
+
+log_level: "INFO"
